@@ -21,12 +21,16 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem[NCPU]; // Per-CPU memory allocator state
 
 void
 kinit()
 {
-  initlock(&kmem.lock, "kmem");
+  char lockname[16];
+  for(int i = 0; i < NCPU; i++) { // per-CPU locks
+    snprintf(lockname, sizeof(lockname), "kmem%d", i);
+    initlock(&kmem[i].lock, lockname);
+  }
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -56,10 +60,15 @@ kfree(void *pa)
 
   r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+  // Add the page to the current CPU's free list
+  push_off();
+  int cpu = cpuid();
+  pop_off();
+
+  acquire(&kmem[cpu].lock);
+  r->next = kmem[cpu].freelist;
+  kmem[cpu].freelist = r;
+  release(&kmem[cpu].lock);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -70,11 +79,77 @@ kalloc(void)
 {
   struct run *r;
 
-  acquire(&kmem.lock);
-  r = kmem.freelist;
+  // Disable interrupts to get the current CPU id
+  push_off();
+  int cpu = cpuid();
+  pop_off();
+
+  // Try to allocate from this CPU's free list
+  acquire(&kmem[cpu].lock);
+  r = kmem[cpu].freelist;
   if(r)
-    kmem.freelist = r->next;
-  release(&kmem.lock);
+    kmem[cpu].freelist = r->next;
+  release(&kmem[cpu].lock);
+
+  // If this CPU's free list is empty, try to steal from other CPUs
+  if(r == 0) {
+    for(int i = 0; i < NCPU; i++) {
+      if(i == cpu)
+        continue;  // Skip the current CPU
+
+      // Try to take half of another CPU's free list
+      acquire(&kmem[i].lock);
+      struct run *list = kmem[i].freelist;
+      if(list) {
+        // Count the number of pages in this free list
+        int count = 0;
+        struct run *current = list;
+        while(current) {
+          count++;
+          current = current->next;
+        }
+
+        // If there's only one page, take it
+        if(count == 1) {
+          r = list;
+          kmem[i].freelist = 0;
+        } 
+        // Otherwise steal half the pages
+        else if(count > 1) {
+          // Find the midpoint of the list
+          struct run *mid = list;
+          for(int j = 0; j < count/2 - 1; j++) {
+            mid = mid->next;
+          }
+
+          // Take the second half
+          r = mid->next;
+          mid->next = 0;
+
+          // Move all but one page to our CPU's free list
+          if(r) {
+            acquire(&kmem[cpu].lock);
+            struct run *stolen = r->next;
+            r->next = 0;  // Keep one page to return
+            
+            // Add the rest to our CPU's free list
+            if(stolen) {
+              struct run *last = stolen;
+              while(last->next)
+                last = last->next;
+              last->next = kmem[cpu].freelist;
+              kmem[cpu].freelist = stolen;
+            }
+            release(&kmem[cpu].lock);
+          }
+        }
+      }
+      release(&kmem[i].lock);
+      
+      if(r)
+        break;  // found memory. no need to check other CPUs
+    }
+  }
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
