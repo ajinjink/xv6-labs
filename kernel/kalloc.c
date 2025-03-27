@@ -26,12 +26,13 @@ struct {
 void
 kinit()
 {
-  char lockname[16];
+  // char lockname[16];
   for(int i = 0; i < NCPU; i++) { // per-CPU locks
-    snprintf(lockname, sizeof(lockname), "kmem%d", i);
-    initlock(&kmem[i].lock, lockname);
+    // snprintf(lockname, sizeof(lockname), "kmem%d", i);
+    initlock(&kmem[i].lock, "kmem");
   }
   freerange(end, (void*)PHYSTOP);
+  // printf("kmem lock init: %s\n", kmem[0].lock.name);
 }
 
 void

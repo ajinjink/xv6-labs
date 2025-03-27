@@ -52,7 +52,9 @@ initlock(struct spinlock *lk, char *name)
 #ifdef LAB_LOCK
   lk->nts = 0;
   lk->n = 0;
+  // printf("Registering lock %s\n", name);
   findslot(lk);
+  // printf("Registered lock %s\n", name);
 #endif  
 }
 
@@ -173,13 +175,22 @@ snprint_lock(char *buf, int sz, struct spinlock *lk)
   int n = 0;
   if(lk->n > 0) {
     n = snprintf(buf, sz, "lock: %s: #test-and-set %d #acquire() %d\n",
-                 lk->name, lk->nts, lk->n);
+                  lk->name, lk->nts, lk->n);
   }
   return n;
 }
 
 int
 statslock(char *buf, int sz) {
+  // printf("Checking locks array\n");
+  // for(int i = 0; i < NLOCK; i++) {
+  //   if(locks[i] == 0) {
+  //     printf("Lock %d: NULL\n", i);
+  //     break;
+  //   }
+  //   printf("Lock %d: name=%s, n=%d, nts=%d\n", i, locks[i]->name, locks[i]->n, locks[i]->nts);
+  // }
+
   int n;
   int tot = 0;
 

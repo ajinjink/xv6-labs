@@ -47,17 +47,16 @@ hash(uint dev, uint blockno)
 void
 binit(void)
 {
-  char lockname[16];
+  // char lockname[16];
 
   // Initialize eviction lock
   initlock(&bcache.eviction_lock, "bcache");
   
   // Initialize hash buckets
   for(int i = 0; i < NBUCKETS; i++){
-    snprintf(lockname, sizeof(lockname), "bcache%d", i);
-    initlock(&bcache.buckets[i].lock, lockname);
+    // snprintf(lockname, sizeof(lockname), "bcache.bucket%d", i);
+    initlock(&bcache.buckets[i].lock, "bcache.bucket");
     
-    // Initialize dummy head
     bcache.buckets[i].head.prev = &bcache.buckets[i].head;
     bcache.buckets[i].head.next = &bcache.buckets[i].head;
   }
